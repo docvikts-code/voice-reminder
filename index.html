@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Помічник - Бережани</title>
+    <title>AI Помічник</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+    
     <style>
         :root { --prm: #007bff; --bg: #f8f9fa; --card: #ffffff; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
@@ -12,6 +15,7 @@
         #mic-btn.listening { background: #ff4757; transform: scale(1.1); animation: pulse 1.5s infinite; }
         .reminders-list { width: 100%; max-width: 420px; margin-top: 25px; }
         .item { background: white; margin: 12px 0; padding: 18px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid var(--prm); box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .item div { text-align: left; }
         .del-btn { background: none; border: none; color: #ff4757; font-size: 20px; cursor: pointer; padding: 10px; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); } 100% { box-shadow: 0 0 0 20px rgba(255, 71, 87, 0); } }
     </style>
@@ -27,6 +31,13 @@
 <div class="reminders-list" id="list"></div>
 
 <script>
+// --- РЕЄСТРАЦІЯ SERVICE WORKER (PWA) ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
+    });
+}
+
 // --- КОНФІГУРАЦІЯ ---
 const googleBridgeUrl = "https://script.google.com/macros/s/AKfycbw7Z-hOMIAW47y-pZSdT7CgZrMSYCNDs6DM4nBDNa1idu3c8rso0MZ_FLtkSsQ85YEV/exec";
 
@@ -57,19 +68,13 @@ if (Speech) {
     const recognition = new Speech();
     recognition.lang = 'uk-UA';
     recognition.continuous = false;
-    recognition.interimResults = false;
 
     btn.onclick = () => {
-        try {
-            recognition.start();
-        } catch (e) {
-            console.log("Recognition already started");
-        }
+        try { recognition.start(); } catch (e) { console.log("Started"); }
     };
 
     recognition.onstart = () => { btn.classList.add('listening'); status.innerText = "Я слухаю..."; };
     recognition.onend = () => { btn.classList.remove('listening'); status.innerText = "Натисніть мікрофон"; };
-    recognition.onerror = (e) => { status.innerText = "Помилка мікрофону"; btn.classList.remove('listening'); };
     recognition.onresult = (e) => {
         const text = e.results[0][0].transcript.toLowerCase();
         output.innerText = `«${text}»`;
@@ -95,11 +100,17 @@ function parseText(text) {
     }
 }
 
+// Перевірка та автовидалення
 setInterval(() => {
     let tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
     const now = Date.now();
     let changed = false;
-    tasks = tasks.filter(t => (now - t.time) < 3600000); 
+    
+    // Видаляємо через 1 годину
+    const oldLength = tasks.length;
+    tasks = tasks.filter(t => (now - t.time) < 3600000);
+    if (tasks.length !== oldLength) changed = true;
+
     tasks.forEach(t => {
         const diff = t.time - now;
         const intervals = [{ ms: 86400000, label: "за добу" }, { ms: 3600000, label: "за годину" }, { ms: 300000, label: "за 5 хвилин" }, { ms: 0, label: "ПОЧАТОК" }];
@@ -111,7 +122,7 @@ setInterval(() => {
             }
         });
     });
-    if (changed || tasks.length !== JSON.parse(localStorage.getItem('v_tasks')).length) {
+    if (changed) {
         localStorage.setItem('v_tasks', JSON.stringify(tasks));
         render();
     }
