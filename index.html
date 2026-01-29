@@ -44,12 +44,34 @@ window.speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
 function speak(msg) {
+    // Зупиняємо попереднє мовлення
     window.speechSynthesis.cancel();
+
     const utter = new SpeechSynthesisUtterance(msg);
-    if (ukrainianVoice) utter.voice = ukrainianVoice;
+    
+    // Отримуємо список усіх голосів у системі
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Шукаємо український голос за кодом мови
+    const ukVoice = voices.find(v => v.lang.startsWith('uk'));
+
+    if (ukVoice) {
+        utter.voice = ukVoice;
+    } else {
+        console.warn("Український голос не знайдено. Буде використано системний.");
+    }
+
     utter.lang = 'uk-UA';
+    utter.pitch = 1.0;
+    utter.rate = 1.0; // Швидкість (можна поставити 0.9 для повільнішого мовлення)
+
     window.speechSynthesis.speak(utter);
 }
+
+// Додатковий фікс для Chrome: змушуємо оновити список голосів
+window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+};
 
 // 2. РОЗПІЗНАВАННЯ МОВИ
 const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -123,3 +145,4 @@ render();
 </script>
 </body>
 </html>
+
