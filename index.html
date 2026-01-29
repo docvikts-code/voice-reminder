@@ -160,7 +160,9 @@ setInterval(() => {
 
 function render() {
     const tasks = JSON.parse(localStorage.getItem('voice_tasks') || '[]');
-    listEl.innerHTML = tasks.sort((a,b) => a.time - b.time).map(t => `
+    const listEl = document.getElementById('list'); // переконайтеся, що ця змінна доступна
+    
+    listEl.innerHTML = tasks.sort((a, b) => a.time - b.time).map(t => `
         <div class="item ${t.time < Date.now() ? 'past' : ''}">
             <div>
                 <strong>${t.task}</strong><br>
@@ -184,4 +186,5 @@ Notification.requestPermission();
 render();
 </script>
 </body>
+
 </html>
