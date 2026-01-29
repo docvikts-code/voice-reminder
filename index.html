@@ -77,10 +77,34 @@ function parseCommand(text) {
 }
 
 function speak(msg) {
+    // Скасовуємо попередні фрази, якщо вони ще звучать
+    window.speechSynthesis.cancel();
+
     const utter = new SpeechSynthesisUtterance(msg);
+    
+    // Отримуємо всі доступні голоси
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Шукаємо український голос
+    const uaVoice = voices.find(v => v.lang === 'uk-UA' || v.lang === 'uk_UA');
+    
+    if (uaVoice) {
+        utter.voice = uaVoice;
+    } else {
+        console.warn("Український голос не знайдено, використовується стандартний.");
+    }
+
     utter.lang = 'uk-UA';
+    utter.pitch = 1;
+    utter.rate = 1;
+    
     window.speechSynthesis.speak(utter);
 }
+
+// Це важливо для Chrome: список голосів завантажується асинхронно
+window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+};
 
 function save(task, time) {
     const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
@@ -111,4 +135,5 @@ render();
 </script>
 </body>
 </html>
+
 
