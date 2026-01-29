@@ -3,38 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Помічник</title>
+    <title>Голосовий Помічник</title>
+    <link rel="manifest" href="manifest.json">
     <style>
-        :root { --prm: #007bff; --bg: #f0f2f5; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .card { background: white; padding: 30px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; }
-        #mic-btn { width: 90px; height: 90px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 35px; cursor: pointer; margin: 20px 0; transition: 0.3s; box-shadow: 0 5px 15px rgba(0,123,255,0.4); }
+        :root { --prm: #007bff; --bg: #f4f7f9; --white: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
+        .card { background: var(--white); padding: 30px; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; }
+        #mic-btn { width: 90px; height: 90px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 35px; cursor: pointer; margin: 20px 0; transition: 0.3s; box-shadow: 0 5px 15px rgba(0,123,255,0.3); }
         #mic-btn.listening { background: #ff4757; animation: pulse 1s infinite; }
-        .item { background: white; margin: 10px 0; padding: 15px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid var(--prm); width: 100%; max-width: 400px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .reminders-list { width: 100%; max-width: 400px; margin-top: 25px; }
+        .item { background: var(--white); margin: 12px 0; padding: 18px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid var(--prm); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .item strong { display: block; margin-bottom: 4px; }
+        .item small { color: #888; }
+        .del-btn { background: none; border: none; color: #ff4757; font-size: 22px; cursor: pointer; padding: 5px; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Мій Помічник</h2>
-    <p id="status">Натисніть мікрофон</p>
-    <button id="mic-btn">🎤</button>
-    <div id="output" style="color: #666; font-style: italic;"></div>
-</div>
-<div id="list" style="margin-top: 20px; width: 100%; max-width: 400px;"></div>
+    <div class="card">
+        <h2>Мій Помічник</h2>
+        <p id="status">Натисніть мікрофон і говоріть</p>
+        <button id="mic-btn">🎤</button>
+        <div id="output" style="min-height: 1.5em; color: #666; font-style: italic; font-size: 0.9em;"></div>
+    </div>
+
+    <div class="reminders-list" id="list">
+        </div>
 
 <script>
-// --- 1. НАЛАШТУВАННЯ (Впишіть свої дані) ---
-const TG_TOKEN = '8586679119:AAGw0ifsSKupw1JFfG5Nz4P8pqkB8mEbLXE'; 
-const TG_CHAT_ID = '1203975708';
+// --- 1. НАЛАШТУВАННЯ ---
+// Вставте сюди ваше посилання, яке ви отримали в Google Apps Script (після Deploy)
+const googleBridgeUrl = "https://script.google.com/macros/s/AKfycbxiAdIfdtxjs4O2IFocMRpDoayHTYKGAiVZ9M9rGNi3bS6UY851OOmbX0IemTfPL8c/exec"; 
 
 const btn = document.getElementById('mic-btn');
 const status = document.getElementById('status');
 const output = document.getElementById('output');
 const listEl = document.getElementById('list');
 
-// --- 2. ГОЛОС (УКРАЇНСЬКА МОВА) ---
+// --- 2. СИНТЕЗ МОВЛЕННЯ (УКРАЇНСЬКА) ---
 let ukVoice = null;
 const loadVoices = () => {
     ukVoice = window.speechSynthesis.getVoices().find(v => v.lang.startsWith('uk'));
@@ -50,42 +57,66 @@ function speak(msg) {
     window.speechSynthesis.speak(utter);
 }
 
-// --- 3. РОЗПІЗНАВАННЯ ---
+// --- 3. РОЗПІЗНАВАННЯ МОВИ ---
 const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (Speech) {
     const recognition = new Speech();
     recognition.lang = 'uk-UA';
-    btn.onclick = () => { try { recognition.start(); } catch(e) {} };
-    recognition.onstart = () => { btn.classList.add('listening'); status.innerText = "Я слухаю..."; };
-    recognition.onend = () => { btn.classList.remove('listening'); status.innerText = "Натисніть мікрофон"; };
+    recognition.continuous = false;
+
+    btn.onclick = () => {
+        try { recognition.start(); } catch(e) { console.warn("Вже слухаю"); }
+    };
+
+    recognition.onstart = () => {
+        btn.classList.add('listening');
+        status.innerText = "Я слухаю...";
+    };
+
+    recognition.onend = () => {
+        btn.classList.remove('listening');
+        status.innerText = "Натисніть мікрофон";
+    };
+
     recognition.onresult = (e) => {
         const text = e.results[0][0].transcript.toLowerCase();
         output.innerText = `«${text}»`;
-        parseText(text);
+        processText(text);
     };
+} else {
+    status.innerText = "Голосове введення не підтримується";
 }
 
-// --- 4. ЛОГІКА ТА ПАРСИНГ ---
-function parseText(text) {
+// --- 4. ПАРСИНГ ТА ЗБЕРЕЖЕННЯ ---
+function processText(text) {
     const timeMatch = text.match(/(\d{1,2})[:.\s](\d{2})/);
     if (timeMatch) {
         const now = new Date();
         let evTime = new Date(now);
         evTime.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
+        
+        // Якщо час вже минув сьогодні, ставимо на завтра
         if (evTime < now) evTime.setDate(evTime.getDate() + 1);
         
-        const task = text.replace(/нагадай|мені|про|о|в/g, '').trim() || "Подія";
+        const task = text.replace(/нагадай|мені|про|о|в|на|запиши/g, '').trim() || "Подія";
+        
         const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
-        tasks.push({ id: Date.now(), task, time: evTime.getTime(), notified: [] });
+        tasks.push({
+            id: Date.now(),
+            task: task,
+            time: evTime.getTime(),
+            notified: [] // Масив для позначення відправлених інтервалів
+        });
         localStorage.setItem('v_tasks', JSON.stringify(tasks));
+        
         render();
-        speak(`Зрозумів. Нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
+        speak(`Добре. Нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
     } else {
-        speak("Вкажіть час, наприклад 15 00");
+        speak("Будь ласка, вкажіть час, наприклад 15:00");
     }
 }
 
-// --- 5. АГРЕСИВНИЙ ТАЙМЕР ПЕРЕВІРКИ (ТОЙ САМИЙ БЛОК) ---
+// --- 5. ТАЙМЕР ПЕРЕВІРКИ (АВТОНОМНИЙ) ---
 setInterval(() => {
     const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
     const now = Date.now();
@@ -97,19 +128,24 @@ setInterval(() => {
             { ms: 86400000, label: "за добу" },
             { ms: 3600000, label: "за годину" },
             { ms: 300000, label: "за 5 хвилин" },
-            { ms: 0, label: "ПОЧАТОК" } // Нагадування в момент події
+            { ms: 0, label: "ПОЧАТОК" }
         ];
 
         intervals.forEach((interval, index) => {
-            // Якщо час настав і ми ще не сповіщали про цей конкретний інтервал
-            if (diff <= interval.ms && diff > (interval.ms - 40000) && !t.notified.includes(index)) {
+            // Перевірка: чи настав час і чи не відправляли ми це повідомлення раніше
+            if (diff <= interval.ms && diff > (interval.ms - 45000) && !t.notified.includes(index)) {
                 const msg = `🔔 Нагадування ${interval.label}: ${t.task}`;
                 
-                // Сповіщення в Telegram
-                fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${encodeURIComponent(msg)}`);
+                // ВІДПРАВКА ЧЕРЕЗ GOOGLE "МІСТОК" У TELEGRAM
+                if (googleBridgeUrl && googleBridgeUrl.startsWith('http')) {
+                    fetch(`${googleBridgeUrl}?text=${encodeURIComponent(msg)}`, { mode: 'no-cors' })
+                    .catch(() => console.log("Помилка мережі"));
+                }
                 
-                // Сповіщення в браузері
-                if (Notification.permission === "granted") new Notification(msg);
+                // Пуш-повідомлення в браузері
+                if (Notification.permission === "granted") {
+                    new Notification(msg);
+                }
                 
                 t.notified.push(index);
                 changed = true;
@@ -121,27 +157,45 @@ setInterval(() => {
         localStorage.setItem('v_tasks', JSON.stringify(tasks));
         render();
     }
-}, 20000); // Перевірка кожні 20 секунд
+}, 30000); // Перевірка кожні 30 секунд
 
+// --- 6. ВІДОБРАЖЕННЯ ТА ВИДАЛЕННЯ ---
 function render() {
     const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
-    listEl.innerHTML = tasks.filter(t => (Date.now() - t.time) < 3600000).map(t => `
-        <div class="item">
-            <div><strong>${t.task}</strong><br><small>${new Date(t.time).toLocaleTimeString()}</small></div>
-            <button onclick="delT(${t.id})" style="border:none; background:none; color:red; font-size:20px;">✕</button>
-        </div>
-    `).join('');
+    const now = Date.now();
+    
+    // Відображаємо тільки актуальні (які ще не минули понад годину)
+    listEl.innerHTML = tasks
+        .filter(t => (now - t.time) < 3600000)
+        .sort((a,b) => a.time - b.time)
+        .map(t => `
+            <div class="item" style="${t.time < now ? 'opacity: 0.6; border-color: #ccc;' : ''}">
+                <div>
+                    <strong>${t.task}</strong>
+                    <small>${new Date(t.time).toLocaleString('uk-UA', {hour: '2-digit', minute:'2-digit', day:'numeric', month:'short'})}</small>
+                </div>
+                <button class="del-btn" onclick="delT(${t.id})">✕</button>
+            </div>
+        `).join('');
 }
 
 window.delT = (id) => {
-    const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]').filter(t => t.id !== id);
+    let tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
+    tasks = tasks.filter(t => t.id !== id);
     localStorage.setItem('v_tasks', JSON.stringify(tasks));
     render();
 };
 
-Notification.requestPermission();
+// Запит прав на пуші та перший рендер
+if (Notification.permission !== "granted") {
+    Notification.requestPermission();
+}
 render();
+
+// Реєстрація Service Worker для PWA (якщо файл sw.js створено)
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
-
