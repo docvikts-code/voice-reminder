@@ -3,20 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice AI Assistant</title>
-    <link rel="manifest" href="manifest.json">
+    <title>Voice Assistant</title>
     <style>
-        :root { --prm: #007bff; --bg: #f0f2f5; --card: #ffffff; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
-        .card { background: var(--card); padding: 25px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.12); width: 100%; max-width: 420px; text-align: center; }
-        #mic-btn { width: 90px; height: 90px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 35px; cursor: pointer; transition: all 0.3s ease; margin: 20px 0; box-shadow: 0 4px 15px rgba(0,123,255,0.4); }
-        #mic-btn.listening { background: #ff4757; transform: scale(1.15); animation: pulse 1.5s infinite; }
-        .reminders-list { width: 100%; max-width: 420px; margin-top: 25px; }
-        .item { background: white; margin: 12px 0; padding: 18px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid var(--prm); animation: slideIn 0.3s ease; }
-        .item.past { border-left-color: #ccc; opacity: 0.7; }
-        button.del-btn { background: none; border: none; color: #ff4757; cursor: pointer; font-size: 18px; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); } 100% { box-shadow: 0 0 0 20px rgba(255, 71, 87, 0); } }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        :root { --prm: #007bff; --bg: #f0f2f5; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        #mic-btn { width: 80px; height: 80px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 30px; cursor: pointer; margin: 20px 0; transition: 0.3s; }
+        #mic-btn.listening { background: #ff4757; transform: scale(1.1); }
+        .item { background: white; margin: 10px 0; padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; border-left: 5px solid var(--prm); width: 100%; max-width: 400px; }
     </style>
 </head>
 <body>
@@ -25,166 +19,95 @@
     <h2>Мій Помічник</h2>
     <p id="status">Натисніть мікрофон</p>
     <button id="mic-btn">🎤</button>
-    <div id="output" style="min-height: 1.2em; color: #666; font-size: 0.9em;"></div>
+    <div id="output" style="color: #666; font-size: 0.9em;"></div>
 </div>
-
-<div class="reminders-list" id="list"></div>
+<div id="list" style="margin-top: 20px; width: 100%; max-width: 400px;"></div>
 
 <script>
-// --- КОНФІГУРАЦІЯ (ВСТАВ СВОЇ ДАНІ) ---
-const TG_TOKEN = 'ВАШ_BOT_TOKEN'; 
-const TG_CHAT_ID = 'ВАШ_CHAT_ID';
+const TG_TOKEN = 'ВАШ_ТОКЕН'; 
+const TG_CHAT_ID = 'ВАШ_ID';
 
 const btn = document.getElementById('mic-btn');
 const status = document.getElementById('status');
 const output = document.getElementById('output');
 const listEl = document.getElementById('list');
 
-// Ініціалізація Speech
 const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!Speech) alert("Ваш браузер не підтримує розпізнавання мови.");
-const recognition = new Speech();
-recognition.lang = 'uk-UA';
-recognition.continuous = false;
+const recognition = Speech ? new Speech() : null;
 
-// 1. ГОЛОСОВЕ ВВЕДЕННЯ
-btn.onclick = () => {
-    try { recognition.start(); } catch(e) {}
-};
-
-recognition.onstart = () => {
-    btn.classList.add('listening');
-    status.innerText = "Я слухаю...";
-};
-
-recognition.onresult = (e) => {
-    btn.classList.remove('listening');
-    const text = e.results[0][0].transcript.toLowerCase();
-    output.innerText = `«${text}»`;
-    processText(text);
-};
-
-recognition.onend = () => btn.classList.remove('listening');
-
-// 2. СКЛАДНИЙ ПАРСИНГ УКРАЇНСЬКОЇ МОВИ
-function processText(text) {
-    const now = new Date();
-    let eventTime = new Date(now);
+if (recognition) {
+    recognition.lang = 'uk-UA';
     
-    // Шукаємо час (напр. 15:30 або 10 00)
+    btn.onclick = () => {
+        try { recognition.start(); } catch(e) { console.log("Вже працює"); }
+    };
+
+    recognition.onstart = () => {
+        btn.classList.add('listening');
+        status.innerText = "Я слухаю...";
+    };
+
+    recognition.onresult = (e) => {
+        btn.classList.remove('listening');
+        const text = e.results[0][0].transcript.toLowerCase();
+        output.innerText = `«${text}»`;
+        parseCommand(text);
+    };
+
+    recognition.onend = () => btn.classList.remove('listening');
+} else {
+    status.innerText = "Браузер не підтримує голос";
+}
+
+function parseCommand(text) {
+    const now = new Date();
     const timeMatch = text.match(/(\d{1,2})[:.\s](\d{2})/);
     
     if (timeMatch) {
+        let eventTime = new Date(now);
         eventTime.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
-        
-        // Якщо час у минулому — значить це на завтра
         if (eventTime < now) eventTime.setDate(eventTime.getDate() + 1);
         
-        // Очищення тексту завдання
-        const task = text.replace(/нагадай|мені|про|о|в|на|запиши/g, '').trim();
-        saveReminder(task || "Подія", eventTime);
-        
-        speak(`Зрозумів. Нагадаю про ${task || 'подію'} о ${timeMatch[1]} ${timeMatch[2]}`);
+        const task = text.replace(/нагадай|мені|про|о|в/g, '').trim() || "Подія";
+        save(task, eventTime);
+        speak(`Зрозумів, нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
     } else {
-        speak("Будь ласка, вкажіть час, наприклад: о 10:30");
+        speak("Скажіть час, наприклад: о 10:30");
     }
 }
 
-// 3. СИНТЕЗ МОВЛЕННЯ (УКРАЇНСЬКИЙ ГОЛОС)
 function speak(msg) {
     const utter = new SpeechSynthesisUtterance(msg);
     utter.lang = 'uk-UA';
-    // Намагаємось знайти жіночий голос, якщо є
-    const voices = window.speechSynthesis.getVoices();
-    const uaVoice = voices.find(v => v.lang.includes('UA'));
-    if (uaVoice) utter.voice = uaVoice;
     window.speechSynthesis.speak(utter);
 }
 
-// 4. ЗБЕРЕЖЕННЯ ТА ТЕЛЕГРАМ
-function saveReminder(task, time) {
-    const reminders = JSON.parse(localStorage.getItem('voice_tasks') || '[]');
-    const newEntry = {
-        id: Date.now(),
-        task: task,
-        time: time.getTime(),
-        done: [false, false, false] // 24г, 1г, 5хв
-    };
-    reminders.push(newEntry);
-    localStorage.setItem('voice_tasks', JSON.stringify(reminders));
+function save(task, time) {
+    const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
+    tasks.push({ id: Date.now(), task, time: time.getTime(), done: [false, false, false] });
+    localStorage.setItem('v_tasks', JSON.stringify(tasks));
     render();
 }
 
-async function notifyTelegram(msg) {
-    try {
-        await fetch(`https://api.telegram.org/bot${8586679119:AAGw0ifsSKupw1JFfG5Nz4P8pqkB8mEbLXE}/sendMessage`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({chat_id: 1203975708, text: msg})
-        });
-    } catch(e) { console.error("TG Error", e); }
-}
-
-// 5. ТАЙМЕР ПЕРЕВІРКИ (ЩОХВИЛИНИ)
-setInterval(() => {
-    let tasks = JSON.parse(localStorage.getItem('voice_tasks') || '[]');
-    const now = Date.now();
-    let changed = false;
-
-    tasks = tasks.filter(t => {
-        const diff = t.time - now;
-        
-        // Перевірка інтервалів
-        const intervals = [86400000, 3600000, 300000];
-        const labels = ["За добу", "За годину", "За 5 хвилин"];
-
-        intervals.forEach((ms, i) => {
-            if (diff <= ms && diff > (ms - 60000) && !t.done[i]) {
-                const msg = `⏰ ${labels[i]}: ${t.task}`;
-                new Notification(msg);
-                notifyTelegram(msg);
-                t.done[i] = true;
-                changed = true;
-            }
-        });
-
-        // Видаляємо записи, які старіші за 1 годину від часу події
-        return (now - t.time) < 3600000;
-    });
-
-    if (changed || true) { // Оновлюємо список для фільтрації старих
-        localStorage.setItem('voice_tasks', JSON.stringify(tasks));
-        render();
-    }
-}, 30000);
-
 function render() {
-    const tasks = JSON.parse(localStorage.getItem('voice_tasks') || '[]');
-    const listEl = document.getElementById('list'); // переконайтеся, що ця змінна доступна
-    
-    listEl.innerHTML = tasks.sort((a, b) => a.time - b.time).map(t => `
-        <div class="item ${t.time < Date.now() ? 'past' : ''}">
-            <div>
-                <strong>${t.task}</strong><br>
-                <small>${new Date(t.time).toLocaleString('uk-UA')}</small>
-            </div>
-            <button class="del-btn" onclick="deleteTask(${t.id})">✕</button>
+    const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
+    listEl.innerHTML = tasks.map(t => `
+        <div class="item">
+            <div><strong>${t.task}</strong><br><small>${new Date(t.time).toLocaleTimeString()}</small></div>
+            <button onclick="deleteT(${t.id})" style="border:none; background:none; color:red; cursor:pointer;">✕</button>
         </div>
     `).join('');
 }
 
-function deleteTask(id) {
-    let tasks = JSON.parse(localStorage.getItem('voice_tasks') || '[]');
+window.deleteT = (id) => {
+    let tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
     tasks = tasks.filter(t => t.id !== id);
-    localStorage.setItem('voice_tasks', JSON.stringify(tasks));
+    localStorage.setItem('v_tasks', JSON.stringify(tasks));
     render();
-}
+};
 
-// SERVICE WORKER & PERMISSIONS
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
-Notification.requestPermission();
+// Запуск рендеру при завантаженні
 render();
 </script>
 </body>
-
 </html>
