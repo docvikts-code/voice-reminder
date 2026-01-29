@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Assistant</title>
+    <title>Помічник</title>
     <style>
         :root { --prm: #007bff; --bg: #f0f2f5; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-        #mic-btn { width: 80px; height: 80px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 30px; cursor: pointer; margin: 20px 0; transition: 0.3s; }
-        #mic-btn.listening { background: #ff4757; transform: scale(1.1); }
-        .item { background: white; margin: 10px 0; padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; border-left: 5px solid var(--prm); width: 100%; max-width: 400px; }
+        body { font-family: sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; }
+        #mic-btn { width: 80px; height: 80px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 30px; cursor: pointer; margin: 20px 0; }
+        #mic-btn.listening { background: #ff4757; animation: pulse 1s infinite; }
+        .item { background: white; margin: 10px 0; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; border-left: 5px solid var(--prm); width: 100%; max-width: 400px; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -19,27 +20,45 @@
     <h2>Мій Помічник</h2>
     <p id="status">Натисніть мікрофон</p>
     <button id="mic-btn">🎤</button>
-    <div id="output" style="color: #666; font-size: 0.9em;"></div>
+    <div id="output" style="color: #666; min-height: 1.5em;"></div>
 </div>
 <div id="list" style="margin-top: 20px; width: 100%; max-width: 400px;"></div>
 
 <script>
-const TG_TOKEN = 8586679119:AAGw0ifsSKupw1JFfG5Nz4P8pqkB8mEbLXE; 
-const TG_CHAT_ID = 1203975708;
+// --- КОНФІГУРАЦІЯ ---
+const TG_TOKEN = '8586679119:AAGw0ifsSKupw1JFfG5Nz4P8pqkB8mEbLXE'; 
+const TG_CHAT_ID = '1203975708';
 
 const btn = document.getElementById('mic-btn');
 const status = document.getElementById('status');
 const output = document.getElementById('output');
 const listEl = document.getElementById('list');
 
-const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-const recognition = Speech ? new Speech() : null;
+// 1. НАЛАШТУВАННЯ ГОЛОСУ (ЩОБ НЕ БУЛО НІМЕЦЬКОЇ)
+let ukrainianVoice = null;
+function loadVoices() {
+    const voices = window.speechSynthesis.getVoices();
+    ukrainianVoice = voices.find(v => v.lang === 'uk-UA' || v.lang === 'uk_UA');
+}
+window.speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
 
-if (recognition) {
+function speak(msg) {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(msg);
+    if (ukrainianVoice) utter.voice = ukrainianVoice;
+    utter.lang = 'uk-UA';
+    window.speechSynthesis.speak(utter);
+}
+
+// 2. РОЗПІЗНАВАННЯ МОВИ
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (Speech) {
+    const recognition = new Speech();
     recognition.lang = 'uk-UA';
-    
+
     btn.onclick = () => {
-        try { recognition.start(); } catch(e) { console.log("Вже працює"); }
+        try { recognition.start(); } catch(e) {}
     };
 
     recognition.onstart = () => {
@@ -48,67 +67,37 @@ if (recognition) {
     };
 
     recognition.onresult = (e) => {
-        btn.classList.remove('listening');
         const text = e.results[0][0].transcript.toLowerCase();
         output.innerText = `«${text}»`;
-        parseCommand(text);
+        parseText(text);
     };
 
-    recognition.onend = () => btn.classList.remove('listening');
-} else {
-    status.innerText = "Браузер не підтримує голос";
+    recognition.onend = () => {
+        btn.classList.remove('listening');
+        status.innerText = "Натисніть мікрофон";
+    };
 }
 
-function parseCommand(text) {
-    const now = new Date();
+// 3. ОБРОБКА ТЕКСТУ
+function parseText(text) {
     const timeMatch = text.match(/(\d{1,2})[:.\s](\d{2})/);
-    
     if (timeMatch) {
-        let eventTime = new Date(now);
-        eventTime.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
-        if (eventTime < now) eventTime.setDate(eventTime.getDate() + 1);
+        const now = new Date();
+        let evTime = new Date(now);
+        evTime.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
+        if (evTime < now) evTime.setDate(evTime.getDate() + 1);
         
         const task = text.replace(/нагадай|мені|про|о|в/g, '').trim() || "Подія";
-        save(task, eventTime);
-        speak(`Зрозумів, нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
+        addReminder(task, evTime);
+        speak(`Добре, нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
     } else {
-        speak("Скажіть час, наприклад: о 10:30");
+        speak("Будь ласка, вкажіть час");
     }
 }
 
-function speak(msg) {
-    // Скасовуємо попередні фрази, якщо вони ще звучать
-    window.speechSynthesis.cancel();
-
-    const utter = new SpeechSynthesisUtterance(msg);
-    
-    // Отримуємо всі доступні голоси
-    const voices = window.speechSynthesis.getVoices();
-    
-    // Шукаємо український голос
-    const uaVoice = voices.find(v => v.lang === 'uk-UA' || v.lang === 'uk_UA');
-    
-    if (uaVoice) {
-        utter.voice = uaVoice;
-    } else {
-        console.warn("Український голос не знайдено, використовується стандартний.");
-    }
-
-    utter.lang = 'uk-UA';
-    utter.pitch = 1;
-    utter.rate = 1;
-    
-    window.speechSynthesis.speak(utter);
-}
-
-// Це важливо для Chrome: список голосів завантажується асинхронно
-window.speechSynthesis.onvoiceschanged = () => {
-    window.speechSynthesis.getVoices();
-};
-
-function save(task, time) {
+function addReminder(task, time) {
     const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
-    tasks.push({ id: Date.now(), task, time: time.getTime(), done: [false, false, false] });
+    tasks.push({ id: Date.now(), task, time: time.getTime() });
     localStorage.setItem('v_tasks', JSON.stringify(tasks));
     render();
 }
@@ -118,22 +107,19 @@ function render() {
     listEl.innerHTML = tasks.map(t => `
         <div class="item">
             <div><strong>${t.task}</strong><br><small>${new Date(t.time).toLocaleTimeString()}</small></div>
-            <button onclick="deleteT(${t.id})" style="border:none; background:none; color:red; cursor:pointer;">✕</button>
+            <button onclick="delT(${t.id})" style="border:none; background:none; color:red; cursor:pointer; font-size:20px;">✕</button>
         </div>
     `).join('');
 }
 
-window.deleteT = (id) => {
+window.delT = (id) => {
     let tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
     tasks = tasks.filter(t => t.id !== id);
     localStorage.setItem('v_tasks', JSON.stringify(tasks));
     render();
 };
 
-// Запуск рендеру при завантаженні
 render();
 </script>
 </body>
 </html>
-
-
