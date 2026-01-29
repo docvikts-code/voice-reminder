@@ -73,6 +73,11 @@ window.speechSynthesis.onvoiceschanged = () => {
     window.speechSynthesis.getVoices();
 };
 
+// Додатковий фікс для Chrome: змушуємо оновити список голосів
+window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+};
+
 // 2. РОЗПІЗНАВАННЯ МОВИ
 const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (Speech) {
@@ -145,4 +150,5 @@ render();
 </script>
 </body>
 </html>
+
 
