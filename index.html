@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Помічник</title>
+    <title>AI Помічник - Cloud</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="theme-color" content="#007bff">
     
     <style>
         :root { --prm: #007bff; --bg: #f8f9fa; --card: #ffffff; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
         .card { background: var(--card); padding: 30px; border-radius: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); width: 100%; max-width: 420px; text-align: center; }
-        #mic-btn { width: 90px; height: 90px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 35px; cursor: pointer; transition: all 0.3s ease; margin: 20px 0; box-shadow: 0 5px 20px rgba(0,123,255,0.3); outline: none; -webkit-tap-highlight-color: transparent; }
+        #mic-btn { width: 90px; height: 90px; border-radius: 50%; border: none; background: var(--prm); color: white; font-size: 35px; cursor: pointer; transition: all 0.3s ease; margin: 20px 0; box-shadow: 0 5px 20px rgba(0,123,255,0.3); outline: none; }
         #mic-btn.listening { background: #ff4757; transform: scale(1.1); animation: pulse 1.5s infinite; }
         .reminders-list { width: 100%; max-width: 420px; margin-top: 25px; }
         .item { background: white; margin: 12px 0; padding: 18px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid var(--prm); box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .item div { text-align: left; }
         .del-btn { background: none; border: none; color: #ff4757; font-size: 20px; cursor: pointer; padding: 10px; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); } 100% { box-shadow: 0 0 0 20px rgba(255, 71, 87, 0); } }
     </style>
@@ -31,7 +31,7 @@
 <div class="reminders-list" id="list"></div>
 
 <script>
-// --- РЕЄСТРАЦІЯ SERVICE WORKER (PWA) ---
+// --- РЕЄСТРАЦІЯ PWA ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
@@ -67,12 +67,8 @@ const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (Speech) {
     const recognition = new Speech();
     recognition.lang = 'uk-UA';
-    recognition.continuous = false;
-
-    btn.onclick = () => {
-        try { recognition.start(); } catch (e) { console.log("Started"); }
-    };
-
+    
+    btn.onclick = () => { try { recognition.start(); } catch (e) {} };
     recognition.onstart = () => { btn.classList.add('listening'); status.innerText = "Я слухаю..."; };
     recognition.onend = () => { btn.classList.remove('listening'); status.innerText = "Натисніть мікрофон"; };
     recognition.onresult = (e) => {
@@ -82,51 +78,50 @@ if (Speech) {
     };
 }
 
+// --- НОВА ЛОГІКА ХМАРНИХ НАГАДУВАНЬ ---
 function parseText(text) {
     const timeMatch = text.match(/(\d{1,2})[:.\s](\d{2})/);
     if (timeMatch) {
         const now = new Date();
         let evTime = new Date(now);
         evTime.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
+        
         if (evTime < now) evTime.setDate(evTime.getDate() + 1);
+        
+        // Вираховуємо різницю в хвилинах
+        const diffMs = evTime.getTime() - now.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+        
+        if (diffMinutes < 0) { speak("Цей час уже минув"); return; }
+
         const task = text.replace(/нагадай|мені|про|о|в|на|запиши/g, '').trim() || "Подія";
+        
+        // ВІДПРАВЛЯЄМО В GOOGLE CLOUD
+        const url = `${googleBridgeUrl}?text=${encodeURIComponent(task)}&diff=${diffMinutes}`;
+        fetch(url, { mode: 'no-cors' });
+
+        speak(`Добре. Нагадаю про ${task} через ${diffMinutes} хвилин`);
+        
+        // Додаємо в локальний список для візуалізації
         const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
-        tasks.push({ id: Date.now(), task, time: evTime.getTime(), notified: [] });
+        tasks.push({ id: Date.now(), task, time: evTime.getTime() });
         localStorage.setItem('v_tasks', JSON.stringify(tasks));
         render();
-        speak(`Зрозумів. Нагадаю про ${task} о ${timeMatch[1]} ${timeMatch[2]}`);
     } else {
-        speak("Будь ласка, вкажіть час");
+        speak("Будь ласка, вкажіть час, наприклад 12:45");
     }
 }
 
-// Перевірка та автовидалення
+// Рендер та автовидалення старих записів з екрана
 setInterval(() => {
     let tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
     const now = Date.now();
-    let changed = false;
-    
-    // Видаляємо через 1 годину
-    const oldLength = tasks.length;
-    tasks = tasks.filter(t => (now - t.time) < 3600000);
-    if (tasks.length !== oldLength) changed = true;
-
-    tasks.forEach(t => {
-        const diff = t.time - now;
-        const intervals = [{ ms: 86400000, label: "за добу" }, { ms: 3600000, label: "за годину" }, { ms: 300000, label: "за 5 хвилин" }, { ms: 0, label: "ПОЧАТОК" }];
-        intervals.forEach((interval, index) => {
-            if (diff <= interval.ms && diff > (interval.ms - 45000) && !t.notified.includes(index)) {
-                fetch(`${googleBridgeUrl}?text=${encodeURIComponent('🔔 ' + interval.label + ': ' + t.task)}`, { mode: 'no-cors' });
-                t.notified.push(index);
-                changed = true;
-            }
-        });
-    });
-    if (changed) {
-        localStorage.setItem('v_tasks', JSON.stringify(tasks));
+    const newTasks = tasks.filter(t => (now - t.time) < 1800000); // видаляємо через 30 хв після події
+    if (newTasks.length !== tasks.length) {
+        localStorage.setItem('v_tasks', JSON.stringify(newTasks));
         render();
     }
-}, 30000);
+}, 60000);
 
 function render() {
     const tasks = JSON.parse(localStorage.getItem('v_tasks') || '[]');
